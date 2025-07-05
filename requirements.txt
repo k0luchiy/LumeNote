@@ -1,0 +1,26 @@
+# Telegram Bot Framework
+python-telegram-bot[ext]==21.2
+
+# Core & Async
+python-dotenv==1.0.1
+pydantic-settings==2.3.4
+asyncio==3.4.3
+
+# Job Queue
+celery==5.4.0
+redis==5.0.7
+
+# RAG & LLM
+langchain==0.2.6
+langchain-google-genai==1.0.6
+langchain-community==0.2.6
+chromadb==0.5.3
+pypdf==4.2.0
+
+# Mind Map & File Handling
+graphviz==0.20.3
+aiohttp==3.9.5
+aiofiles==23.2.1
+
+# For user state management
+filelock==3.15.4

@@ -1,0 +1,65 @@
+services:
+  redis:
+    image: redis:7.2-alpine
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  piper:
+    image: lscr.io/linuxserver/piper:latest
+    restart: always
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    environment:
+      - TZ=Etc/UTC
+      - VOICES=en_US-lessac-medium,de_DE-thorsten-medium,ru_RU-irina-medium
+    ports:
+      - "5000:5000"
+    volumes:
+      - piper_voices:/config
+
+  bot:
+    build: .
+    restart: always
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    command: python -m tele_notebook.bot.main
+    env_file:
+      - .env
+    volumes:
+      - ./tele_notebook:/app/tele_notebook
+      - ./chroma_data:/app/chroma_data
+      # Add the shared uploads volume
+      - uploads_volume:/app/uploads
+    depends_on:
+      - redis
+      - piper
+
+  worker:
+    build: .
+    restart: always
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    command: celery -A tele_notebook.tasks.celery_app worker --loglevel=info -P solo
+    env_file:
+      - .env
+    volumes:
+      - ./tele_notebook:/app/tele_notebook
+      - ./chroma_data:/app/chroma_data
+      # Add the shared uploads volume
+      - uploads_volume:/app/uploads
+    depends_on:
+      - redis
+      - piper
+      - bot
+
+volumes:
+  redis_data:
+  piper_voices:
+  # Define the new shared volume
+  uploads_volume:
