@@ -1,3 +1,5 @@
+# FILE: requirements.txt
+
 # Telegram Bot Framework
 python-telegram-bot[ext]==21.2
 
@@ -14,7 +16,8 @@ redis==5.0.7
 langchain==0.2.6
 langchain-google-genai==1.0.6
 langchain-community==0.2.6
-chromadb==0.5.3
+# FIX: Downgrade to the version without the telemetry bug
+chromadb==0.4.24
 pypdf==4.2.0
 
 # Mind Map & File Handling

@@ -1,9 +1,11 @@
+# FILE: docker-compose.yml
+
 services:
   redis:
     image: redis:7.2-alpine
     restart: always
     ports:
-      - "6379:6379"
+      - "6378:6379"
     volumes:
       - redis_data:/data
 
@@ -15,9 +17,10 @@ services:
       - 1.1.1.1
     environment:
       - TZ=Etc/UTC
-      - VOICES=en_US-lessac-medium,de_DE-thorsten-medium,ru_RU-irina-medium
+      # FIX: Use a quoted, comma-separated list for the voices.
+      - VOICES="en_US-lessac-medium,de_DE-thorsten-medium,ru_RU-irina-medium"
     ports:
-      - "5000:5000"
+      - "5001:5000"
     volumes:
       - piper_voices:/config
 
@@ -33,7 +36,6 @@ services:
     volumes:
       - ./tele_notebook:/app/tele_notebook
       - ./chroma_data:/app/chroma_data
-      # Add the shared uploads volume
       - uploads_volume:/app/uploads
     depends_on:
       - redis
@@ -51,7 +53,6 @@ services:
     volumes:
       - ./tele_notebook:/app/tele_notebook
       - ./chroma_data:/app/chroma_data
-      # Add the shared uploads volume
       - uploads_volume:/app/uploads
     depends_on:
       - redis
@@ -61,5 +62,4 @@ services:
 volumes:
   redis_data:
   piper_voices:
-  # Define the new shared volume
   uploads_volume:

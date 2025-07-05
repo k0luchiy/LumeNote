@@ -4,7 +4,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from tele_notebook.utils import prompts
 
 # REMOVED the google_api_key argument. The library will find it in the environment.
-llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash")
+llm = ChatGoogleGenerativeAI(model="gemini-2.5-pro")
 
 async def get_rag_response(retriever, question: str, language: str) -> str:
     prompt = prompts.get_qa_prompt(language)
