@@ -9,17 +9,21 @@ services:
 
   piper:
     image: lscr.io/linuxserver/piper:latest
-    restart: always
-    dns:
-      - 8.8.8.8
-      - 1.1.1.1
+    container_name: piper
     environment:
+      - PUID=1000
+      - PGID=1000
       - TZ=Etc/UTC
-      - VOICES=en_US-lessac-medium,de_DE-thorsten-medium,ru_RU-irina-medium
+      - PIPER_VOICE=en_US-lessac-medium # Default voice
+      - PIPER_VOICES_DIR=/voices
+      - LANG=C.UTF-8 # <--- ADD THIS LINE
+    volumes:
+      - ./piper_voices:/voices
     ports:
       - "5001:5000"
-    volumes:
-      - piper_voices:/config
+    restart: unless-stopped
+    dns:
+      - 8.8.8.8
 
   bot:
     build: .
@@ -27,6 +31,7 @@ services:
     dns:
       - 8.8.8.8
       - 1.1.1.1
+    network_mode: "host" 
     command: python -m tele_notebook.bot.main
     env_file:
       - .env
@@ -50,6 +55,7 @@ services:
     dns:
       - 8.8.8.8
       - 1.1.1.1
+    network_mode: "host" 
     command: celery -A tele_notebook.tasks.celery_app worker --loglevel=info -P solo
     env_file:
       - .env

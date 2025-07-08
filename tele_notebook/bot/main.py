@@ -2,6 +2,7 @@ import logging
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
 from tele_notebook.core.config import settings
 from tele_notebook.bot import handlers
+from tele_notebook.utils import localization # <-- ADD THIS IMPORT
 
 # Enable logging
 logging.basicConfig(
@@ -12,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 def main() -> None:
     """Run the bot."""
+    localization.load_translations()
     logger.info("Starting bot...")
     
     application = ApplicationBuilder().token(settings.TELEGRAM_BOT_TOKEN).build()

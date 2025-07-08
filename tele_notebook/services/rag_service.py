@@ -8,8 +8,9 @@ from langchain_community.vectorstores import Chroma
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from tele_notebook.core.config import settings
 import os
+import re # <-- ADD THIS IMPORT
+from unidecode import unidecode # <-- ADD THIS IMPORT
 
-# Disable ChromaDB's telemetry
 client = chromadb.PersistentClient(
     path=settings.CHROMA_DB_PATH,
     settings=ChromaSettings(anonymized_telemetry=False)
@@ -18,7 +19,22 @@ client = chromadb.PersistentClient(
 embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
 
 def get_collection_name(user_id: int, project_name: str) -> str:
-    return f"user_{user_id}_{project_name.lower().replace(' ', '_')}"
+    """
+    Creates a ChromaDB-safe collection name from a user-provided project name.
+    This involves transliterating to ASCII, lowercasing, and cleaning special characters.
+    """
+    # 1. Transliterate non-ASCII characters (e.g., "РусИстория" -> "RusIstoriya")
+    slug = unidecode(project_name)
+    # 2. Convert to lowercase
+    slug = slug.lower()
+    # 3. Replace spaces or consecutive hyphens/underscores with a single hyphen
+    slug = re.sub(r'[\s_-]+', '-', slug)
+    # 4. Remove any remaining characters that are not letters, numbers, or hyphens
+    slug = re.sub(r'[^a-z0-9-]', '', slug)
+    # 5. Remove leading/trailing hyphens
+    slug = slug.strip('-')
+
+    return f"user_{user_id}_{slug}"
 
 # NEW: Create an async version of the document processing function
 async def async_add_document_to_project(user_id: int, project_name: str, file_path: str, file_type: str):
