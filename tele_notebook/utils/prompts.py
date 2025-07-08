@@ -31,6 +31,8 @@ Topic: {{topic}}
 Podcast Script:"""
     )
 
+# utils/prompts.py (The new, corrected version)
+
 def get_mindmap_prompt(language: str) -> ChatPromptTemplate:
     lang_name = SUPPORTED_LANGUAGES.get(language, {"name": "English"})["name"]
     return ChatPromptTemplate.from_template(
@@ -42,17 +44,17 @@ Your entire output must be ONLY the DOT language code, enclosed in a single ```d
 
 Example format:
 ```dot
-digraph G {{
+digraph G {{{{  # CORRECT: Use 4 open braces to escape for both f-string and LangChain
     rankdir=LR;
     node [shape=box, style="rounded,filled", fillcolor=lightblue];
     "Central Topic" -> "Idea 1";
     "Central Topic" -> "Idea 2";
     "Idea 1" -> "Detail A";
-}}```
+}}}}```  # CORRECT: Use 4 close braces
 Context:
 {{context}}
 
 Topic: {{topic}}
 
 DOT Language Output:"""
-)
+    )

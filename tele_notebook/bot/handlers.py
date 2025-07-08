@@ -144,6 +144,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     project_name = state.get("active_project")
     language = state.get("language", "en")
     question = update.message.text
+    chat_id = update.effective_chat.id
 
     if not project_name or project_name == "default":
         await update.message.reply_markdown_v2(r"Please create a project first with `/newproject <name>`\.")
@@ -154,14 +155,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_markdown_v2(r"Your active project has no documents\. Please upload a file first\.")
         return
 
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action='typing')
+    # Give immediate feedback to the user
+    await update.message.reply_text("🤔 Thinking...")
 
-    try:
-        retriever = rag_service.get_project_retriever(user_id, project_name)
-        answer = await llm_service.get_rag_response(retriever, question, language)
-        await update.message.reply_text(answer)
-    except Exception as e:
-        await update.message.reply_text(f"Sorry, an error occurred while fetching the answer: {e}")
+    # Offload the work to the Celery worker
+    tasks.answer_question_task.delay(chat_id, user_id, project_name, question, language)
 
 async def generate_content_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, task_function, command_name: str):
     user_id = update.effective_user.id

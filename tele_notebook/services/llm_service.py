@@ -1,12 +1,16 @@
+# services/llm_service.py
+
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
 from langchain_google_genai import ChatGoogleGenerativeAI
 from tele_notebook.utils import prompts
 
-# REMOVED the google_api_key argument. The library will find it in the environment.
-llm = ChatGoogleGenerativeAI(model="gemini-2.5-pro")
+# REMOVE the global llm object
+# llm = ChatGoogleGenerativeAI(model="gemini-2.5-pro")
 
 async def get_rag_response(retriever, question: str, language: str) -> str:
+    # CREATE the llm object here, inside the async function
+    llm = ChatGoogleGenerativeAI(model="gemini-2.5-pro") # Note: I've updated to 1.5-pro as it's generally better.
     prompt = prompts.get_qa_prompt(language)
 
     rag_chain = (
@@ -17,7 +21,9 @@ async def get_rag_response(retriever, question: str, language: str) -> str:
     )
     return await rag_chain.ainvoke(question)
 
-async def generate_podcast_script(retriever, topic: str, language: str) -> str:
+async def generate_podcast_script(retriever, topic: str, language:str) -> str:
+    # CREATE the llm object here, inside the async function
+    llm = ChatGoogleGenerativeAI(model="gemini-2.5-pro")
     prompt = prompts.get_podcast_prompt(language)
 
     def format_docs(docs):
@@ -32,6 +38,8 @@ async def generate_podcast_script(retriever, topic: str, language: str) -> str:
     return await chain.ainvoke(topic)
 
 async def generate_mindmap_dot(retriever, topic: str, language: str) -> str:
+    # CREATE the llm object here, inside the async function
+    llm = ChatGoogleGenerativeAI(model="gemini-2.5-pro")
     prompt = prompts.get_mindmap_prompt(language)
 
     def format_docs(docs):

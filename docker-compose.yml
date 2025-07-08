@@ -1,5 +1,3 @@
-# FILE: docker-compose.yml
-
 services:
   redis:
     image: redis:7.2-alpine
@@ -17,8 +15,7 @@ services:
       - 1.1.1.1
     environment:
       - TZ=Etc/UTC
-      # FIX: Use a quoted, comma-separated list for the voices.
-      - VOICES="en_US-lessac-medium,de_DE-thorsten-medium,ru_RU-irina-medium"
+      - VOICES=en_US-lessac-medium,de_DE-thorsten-medium,ru_RU-irina-medium
     ports:
       - "5001:5000"
     volumes:
@@ -33,6 +30,12 @@ services:
     command: python -m tele_notebook.bot.main
     env_file:
       - .env
+    # --- ADD THIS BLOCK ---
+    # environment:
+    #   - HTTP_PROXY=http://57.129.81.201:8080 #4.149.210.210:3128
+    #   - HTTPS_PROXY=http://57.129.81.201:8080
+    #   - NO_PROXY=localhost,127.0.0.1,redis,piper #,api.telegram.org
+    # ----------------------
     volumes:
       - ./tele_notebook:/app/tele_notebook
       - ./chroma_data:/app/chroma_data
@@ -50,6 +53,12 @@ services:
     command: celery -A tele_notebook.tasks.celery_app worker --loglevel=info -P solo
     env_file:
       - .env
+    # --- ADD THIS BLOCK ---
+    # environment:
+    #   - HTTP_PROXY=http://57.129.81.201:8080
+    #   - HTTPS_PROXY=http://57.129.81.201:8080
+    #   - NO_PROXY=localhost,127.0.0.1,redis,piper #,api.telegram.org
+    # ----------------------
     volumes:
       - ./tele_notebook:/app/tele_notebook
       - ./chroma_data:/app/chroma_data
