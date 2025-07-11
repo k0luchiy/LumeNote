@@ -16,7 +16,15 @@ def main() -> None:
     localization.load_translations()
     logger.info("Starting bot...")
     
-    application = ApplicationBuilder().token(settings.TELEGRAM_BOT_TOKEN).build()
+    # --- THIS IS THE FIX ---
+    # We add read_timeout and write_timeout to make the connection more stable
+    application = (
+        ApplicationBuilder()
+        .token(settings.TELEGRAM_BOT_TOKEN)
+        .read_timeout(30)  # Seconds to wait for a response from Telegram
+        .write_timeout(30) # Seconds to wait to send a message to Telegram
+        .build()
+    )
 
     # Command Handlers
     application.add_handler(CommandHandler("start", handlers.start))
@@ -30,6 +38,9 @@ def main() -> None:
 
     # Language
     application.add_handler(CommandHandler("lang", handlers.set_language))
+
+    application.add_handler(CommandHandler("discover", handlers.discover))
+    application.add_handler(CommandHandler("addsource", handlers.add_source))
 
     # Content Generation (using the generic handler)
     application.add_handler(CommandHandler(

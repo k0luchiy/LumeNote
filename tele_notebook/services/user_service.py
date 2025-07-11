@@ -31,27 +31,44 @@ def get_user_state(user_id: int) -> Dict:
         states = _load_states()
         return states.get(str(user_id), {"active_project": "default", "language": "en"})
 
-def set_user_state(user_id: int, project: Optional[str] = None, lang: Optional[str] = None):
+def set_user_state(user_id: int, project: Optional[str] = None, lang: Optional[str] = None, main_topic: Optional[str] = None): # <-- Add main_topic
     with lock:
         states = _load_states()
         user_id_str = str(user_id)
         if user_id_str not in states:
-            states[user_id_str] = {"active_project": "default", "language": "en"}
+            states[user_id_str] = {"active_project": "default", "language": "en", "main_topic": None}
 
         if project is not None:
             states[user_id_str]["active_project"] = project
         if lang is not None:
             states[user_id_str]["language"] = lang
+        # ADD THIS BLOCK
+        if main_topic is not None:
+            states[user_id_str]["main_topic"] = main_topic
 
         _save_states(states)
 
 def get_user_projects(user_id: int) -> list:
-    # This is a simplified approach for the MVP.
+    """
+    Gets a list of ALL full collection names for a given user.
+    e.g., ['user_123_project-a', 'user_123_project-b']
+    """
     from tele_notebook.services.rag_service import client
     try:
         collections = client.list_collections()
         user_prefix = f"user_{user_id}_"
-        return [col.name.replace(user_prefix, "", 1) for col in collections if col.name.startswith(user_prefix)]
+        # --- THIS IS THE FIX ---
+        # Return the full collection name, not the shortened version
+        return [col.name for col in collections if col.name.startswith(user_prefix)]
     except Exception:
-        # ChromaDB might not be initialized on the very first run
         return []
+
+# --- ADD A NEW FUNCTION FOR DISPLAY ---
+def get_user_display_projects(user_id: int) -> list:
+    """
+    Gets a list of user-friendly project names for display.
+    e.g., ['project-a', 'project-b']
+    """
+    full_names = get_user_projects(user_id)
+    user_prefix = f"user_{user_id}_"
+    return [name.replace(user_prefix, "", 1) for name in full_names]

@@ -10,9 +10,9 @@ This document provides a deep dive into the technical architecture, design decis
     -   [Component Breakdown](#component-breakdown)
 3.  [Technology Stack Rationale](#3-technology-stack-rationale)
 4.  [Data Flow Deep Dive](#4-data-flow-deep-dive)
-    -   [User Interaction (Q&A)](#user-interaction-qa)
-    -   [Document Ingestion (Async Task)](#document-ingestion-async-task)
-    -   [Podcast Generation (Async Task)](#podcast-generation-async-task)
+    -   [User Q&A (Async Task)](#user-qa-async-task)
+    -   [Autonomous Source Discovery (Async Task)](#autonomous-source-discovery-async-task)
+    -   [Manual Document Upload (Async Task)](#manual-document-upload-async-task)
 5.  [Project Structure Explained](#5-project-structure-explained)
 6.  [Key Configuration & Environment](#6-key-configuration--environment)
 7.  [Development and Deployment Workflow](#7-development-and-deployment-workflow)
@@ -22,13 +22,13 @@ This document provides a deep dive into the technical architecture, design decis
 
 ## 1. Core Philosophy & Vision
 
-The primary goal of Lumenote is to provide a responsive, powerful, and personal AI assistant on Telegram. The key architectural driver is **asynchronous, non-blocking operation**. A user performing a simple, fast action (like asking a question) should **never** be blocked by another user performing a long, slow action (like generating a podcast).
+The primary goal of Lumenote is to provide a responsive, powerful, and autonomous AI research assistant on Telegram. The key architectural driver is **asynchronous, non-blocking operation, with a strict separation of concerns**. A user performing a simple, fast action should **never** be blocked by another user performing a long, slow action (like discovering and ingesting web sources).
 
-This philosophy led to the decoupled, multi-component architecture centered around a job queue.
+This philosophy led to the decoupled, multi-component architecture centered around a Celery job queue, where the `bot` service acts as a pure "receptionist" and the `worker` service is the "workhorse".
 
 ## 2. System Architecture
 
-Lumenote is not a monolithic application. It is a distributed system orchestrated by Docker Compose, composed of four primary services and three persistent data volumes.
+Lumenote is not a monolithic application. It is a distributed system orchestrated by Docker Compose, composed of three primary services and two persistent data volumes. The original Piper TTS service has been deprecated in favor of the Google Gemini TTS API.
 
 ### Diagram
 
@@ -47,137 +47,127 @@ graph TD
             W[Python: Celery Worker]
         end
 
-        subgraph "Broker & TTS Services"
+        subgraph "Broker Service"
             R[Redis Broker]
-            P[Piper TTS]
         end
 
         subgraph "Persistent Storage"
             V_CHROMA[ChromaDB Volume]
             V_UPLOADS[Uploads Volume]
-            V_PIPER[Piper Voices Volume]
         end
-
+    end
+    
+    subgraph "External APIs"
+        G_API[Google Gemini API]
+        T_API[Tavily Search API]
     end
 
     U -- /command, message, file --> B
-    B -- Quick Reply --> U
-    B -- Add Job (Path, etc.) --> R
+    B -- Quick Reply (e.g. "On it!") --> U
+    B -- Add Job (chat_id, user_id, topic, etc.) --> R
 
     W -- Pulls Job --> R
+    W -- API Call --> T_API
+    W -- API Call --> G_API
+    
     W -- Read File --> V_UPLOADS
     W -- Store/Retrieve Embeddings --> V_CHROMA
-    W -- API Call --> G[Google Gemini API]
-    W -- API Call --> P
-
-    P -- Reads Model --> V_PIPER
-    P -- Returns Audio --> W
-
-    W -- Sends Final Result --> U
-
-    B -- Saves File --> V_UPLOADS
+    
+    W -- Sends Final Result (text, audio, image) --> U
+    
+    B -- Saves Uploaded File --> V_UPLOADS
 ```
 
 ### Component Breakdown
 
 -   **`bot` (The Receptionist)**:
     -   **Technology**: `python-telegram-bot` in `asyncio` mode.
-    -   **Responsibility**: To be the fast, user-facing part of the system. It handles all incoming Telegram updates, validates user input, provides immediate acknowledgements ("On it!"), and its most important job is to **delegate** heavy work. It places a "job" (a Python function call with arguments) onto the Redis queue. It does **not** perform any LLM calls, file processing, or audio generation itself.
+    -   **Responsibility**: To be the fast, user-facing part of the system. It handles all incoming Telegram updates, validates user input, provides immediate acknowledgements ("Starting discovery..."), and its most important job is to **delegate all heavy work**. It places a "job" (a Python function call with arguments) onto the Redis queue. It performs **no** API calls to external services (Google, Tavily), no database interactions, and no file processing.
 
 -   **`worker` (The Workhorse)**:
-    -   **Technology**: `Celery` with a `Redis` backend.
-    -   **Responsibility**: This is the engine of the application. It runs in the background, constantly watching the Redis queue for new jobs. When a job appears, it executes it. This includes:
-        1.  Reading a document from the shared `uploads_volume`.
-        2.  Chunking and embedding the document using LangChain and storing it in ChromaDB on the `chroma_data` volume.
-        3.  Performing RAG lookups against ChromaDB.
-        4.  Making expensive API calls to the Google Gemini LLM.
-        5.  Making API calls to the Piper TTS service.
-        6.  Using the `python-telegram-bot` library to send the final result (a file or image) back to the user who requested it.
+    -   **Technology**: `Celery` with a `Redis` backend, running in `-P solo` mode for `asyncio` compatibility.
+    -   **Responsibility**: This is the engine of the application. It runs in the background, constantly watching the Redis queue for new jobs. When a job appears, it executes it. All business logic resides here:
+        1.  Calling the **Tavily Search API** to discover sources.
+        2.  Processing discovered web content or user-uploaded files.
+        3.  Making expensive API calls to the **Google Gemini API** for embeddings, Q&A, and Text-to-Speech.
+        4.  Interacting with the **ChromaDB** vector store on the `chroma_data` volume.
+        5.  Rendering mind maps with the `graphviz` library.
+        6.  Using its own `Bot` instance to send final results or status updates back to the user.
 
 -   **`redis` (The Job Board)**:
     -   **Technology**: Official Redis Docker image.
     -   **Responsibility**: Acts as the intermediary message broker. It decouples the `bot` from the `worker`. If the worker is busy or crashes, the jobs remain safely in the Redis queue until a worker is available to process them. This makes the system resilient.
 
--   **`piper` (The Voice)**:
-    -   **Technology**: `lscr.io/linuxserver/piper` Docker image.
-    -   **Responsibility**: A dedicated microservice for one task: converting text to speech. It exposes a simple HTTP endpoint that the `worker` can call. Keeping it as a separate service allows us to manage and update it independently.
-
 ## 3. Technology Stack Rationale
 
-| Technology              | Reason for Choice                                                                                                                              |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Docker Compose**      | Essential for managing a multi-service application. It defines the entire stack, networking, and volumes in a single, reproducible file.         |
-| **`python-telegram-bot`** | A mature, feature-rich library for Telegram bots with excellent `asyncio` support, which is critical for the non-blocking `bot` service.      |
-| **Celery & Redis**      | The industry standard for background task processing in Python. It's robust, scalable, and perfectly suited for offloading long-running jobs.    |
-| **LangChain**           | Provides high-level abstractions for building RAG (Retrieval-Augmented Generation) pipelines, handling document loading, chunking, and chaining. |
-| **Google Gemini**       | The chosen Large Language Model for its powerful multi-modal and reasoning capabilities at a competitive cost.                                   |
-| **ChromaDB**            | A simple, file-based vector database that is easy to set up for development and can be persisted with a simple Docker volume.                     |
-| **Graphviz**            | A powerful and standard tool for programmatically generating graphs, which is perfect for creating mind maps from structured LLM output.        |
-| **Pydantic-settings**   | Provides robust, type-safe loading of configuration from environment variables (`.env` file), preventing common configuration errors.         |
+| Technology | Reason for Choice |
+| --- | --- |
+| **Docker Compose** | Essential for managing a multi-service application. Defines the entire stack, networking, and volumes in a single, reproducible file. |
+| **`python-telegram-bot`** | A mature, feature-rich library for Telegram bots with excellent `asyncio` support, critical for the non-blocking `bot` service. |
+| **Celery & Redis** | The industry standard for background task processing in Python. It's robust, scalable, and perfectly suited for offloading long-running jobs. |
+| **LangChain** | Provides high-level abstractions for building RAG pipelines, handling document loading, chunking, and chaining LLM calls. |
+| **Google Gemini API** | The chosen Large Language Model for its powerful multi-modal capabilities (text, vision, TTS) at a competitive cost. |
+| **Tavily Search API** | A simple and powerful search API designed for LLM applications, providing clean, relevant search results and content snippets. |
+| **ChromaDB** | A simple, file-based vector database that is easy to set up for development and can be persisted with a simple Docker volume. |
+| **Graphviz** | A powerful and standard tool for programmatically generating graphs, perfect for creating mind maps from structured LLM output. |
+| **`pydantic-settings`** | Provides robust, type-safe loading of configuration from environment variables (`.env` file), preventing common configuration errors. |
 
 ## 4. Data Flow Deep Dive
 
-### User Interaction (Q&A)
+### User Q&A (Async Task)
 
-1.  User sends a text message to the bot.
-2.  The `bot` service receives the update via `python-telegram-bot`.
-3.  The `handle_message` handler in `handlers.py` is triggered.
-4.  It immediately sends a "typing" action to give user feedback.
-5.  It calls `llm_service.get_rag_response()`.
-6.  This service performs a **synchronous** RAG lookup in ChromaDB to find relevant context.
-7.  The context and question are sent to the Gemini API.
-8.  The `bot` service awaits the response from Gemini and sends the answer back to the user.
-    *Note: This is the only "heavy" operation the main bot performs. It's kept here for low-latency Q&A, but could be offloaded to Celery if it proves to be too slow.*
+1.  User sends a text message (a question).
+2.  The `bot` service's `handle_message` handler is triggered.
+3.  The handler does a quick check to see if a project exists, sends a "Thinking..." acknowledgement, and immediately adds an `answer_question_task` to the Redis queue.
+4.  The `worker` service picks up the job.
+5.  The worker's task re-initializes a fresh ChromaDB client to get the latest data, creates a retriever, and passes the context and question to the Gemini API.
+6.  The `worker` awaits the response and sends the final answer back to the user.
 
-### Document Ingestion (Async Task)
+### Autonomous Source Discovery (Async Task)
+
+1.  User sends the `/discover` command.
+2.  The `bot` service's `discover` handler is triggered.
+3.  It replies immediately: "Starting discovery..." and adds a `discover_sources_task` to the Redis queue. The `bot`'s work is done.
+4.  The `worker` service picks up the `discover_sources_task`.
+5.  The task calls the **Tavily API** to get a list of relevant sources and their content.
+6.  The task sends a message to the user listing the found sources.
+7.  The task then iterates through the sources, calling `rag_service.async_add_text_to_project` for each one to chunk, embed (via Gemini API), and store the vectors in ChromaDB.
+8.  Upon completion of the entire loop, the `worker` sends a final "✅ Success!" message to the user.
+
+### Manual Document Upload (Async Task)
 
 1.  User uploads a PDF file.
 2.  The `bot` service's `handle_document` handler is triggered.
-3.  It immediately replies to the user: "Got it! Processing your file..."
+3.  It immediately replies: "Got it! Processing your file..."
 4.  It downloads the file and saves it to the shared `/app/uploads` volume.
-5.  It calls `tasks.process_document_task.delay(...)`, adding a job to the Redis queue. The arguments include the `chat_id` and the path to the file on the shared volume.
-6.  The `bot`'s work is done for now. It is free to handle other requests.
-7.  The `worker` service picks up the job.
-8.  It opens the file from the shared volume path.
-9.  It uses `rag_service` to chunk the text, create embeddings (calling the Gemini embedding API), and store the vectors in ChromaDB.
-10. Upon completion, the `worker` uses its own `Bot` instance to call `bot.send_message` and notify the user that processing is complete.
-
-### Podcast Generation (Async Task)
-
-1.  User sends `/podcast on the main topic`.
-2.  The `bot` service's `generate_content_handler` is triggered.
-3.  It replies immediately: "On it! Generating your podcast..."
-4.  It adds the `tasks.generate_podcast_task.delay(...)` job to Redis.
-5.  The `worker` picks up the job.
-6.  It performs a RAG lookup in ChromaDB to get context for "the main topic".
-7.  It prompts the Gemini LLM to write a podcast script based on the context.
-8.  It takes the generated script and makes an HTTP POST request to the `piper` service's endpoint (`http://piper:5000/tts`).
-9.  The `piper` service synthesizes the audio and returns the `.wav` file bytes.
-10. The `worker` saves these bytes to a temporary file and then sends this audio file to the user via the Telegram API.
+5.  It adds a `process_document_task` to the Redis queue, passing the file path.
+6.  The `worker` service picks up the job.
+7.  It opens the file from the shared volume path, uses `rag_service` to chunk and embed it, and stores the vectors in ChromaDB.
+8.  Upon completion, the `worker` notifies the user that the file has been added.
 
 ## 5. Project Structure Explained
 
--   **`bot/`**: Contains all code directly related to the Telegram bot interface. `main.py` starts the bot, and `handlers.py` defines what to do for each command.
--   **`core/`**: Holds core application setup code, like the `config.py` for loading environment variables.
--   **`services/`**: A crucial directory containing business logic decoupled from the bot interface. Each file is a client for an external service (`llm_service` for Gemini, `tts_service` for Piper) or a core part of our logic (`rag_service` for the vector database). This makes the code highly modular and testable.
--   **`tasks/`**: Defines the background jobs that will be run by Celery. `celery_app.py` is the configuration, and `tasks.py` contains the functions decorated with `@celery_app.task`.
--   **`utils/`**: A place for helper functions and constants that are used across the application, like the LLM `prompts.py`.
+-   **`bot/`**: Contains all code for the user-facing Telegram interface (`main.py`, `handlers.py`). This code is kept "thin" and is only responsible for receiving updates and dispatching tasks.
+-   **`core/`**: Holds core application setup code, like `config.py` for loading environment variables.
+-   **`locales/`**: Contains `.json` files for internationalization, allowing for easy translation of the bot's interface.
+-   **`services/`**: A crucial directory containing business logic decoupled from the bot interface. Each file is a client for an external service (`llm_service` for Gemini, `rag_service` for ChromaDB) or core logic (`user_service` for state).
+-   **`tasks/`**: Defines the background jobs run by Celery. `celery_app.py` is the configuration, and `tasks.py` contains the functions decorated with `@celery_app.task`, where all the heavy lifting occurs.
+-   **`utils/`**: Helper functions and constants used across the application, like LLM `prompts.py` and `localization.py`.
 
 ## 6. Key Configuration & Environment
 
--   **`.env`**: Stores all secrets. It is loaded by `pydantic-settings` in `core/config.py`. **Never commit this file.**
--   **`docker-compose.yml`**: The single source of truth for the entire application's infrastructure. It defines networking, service dependencies, and volume mounts.
-    -   **DNS**: We explicitly set DNS to `8.8.8.8` to prevent resolution issues inside containers.
-    -   **Volumes**: We use named volumes (`chroma_data`, `uploads_volume`, `piper_voices`) to persist data across container restarts.
+-   **`.env`**: Stores all secrets (Telegram, Google, Tavily). It is loaded by `pydantic-settings` in `core/config.py`. **Never commit this file.**
+-   **`docker-compose.yml`**: The single source of truth for the application's infrastructure. It defines networking, service dependencies, and volume mounts.
+-   **`requirements.txt`**: A pinned list of all Python dependencies.
 
 ## 7. Development and Deployment Workflow
 
-1.  **Local Development**: `docker-compose up --build` is the primary command. It spins up the entire stack locally. Since the application code is mounted as a volume, changes to Python files are reflected instantly upon restarting the containers (`docker-compose restart bot worker`).
-2.  **Deployment**: The project is designed to be deployed on any server with Docker and Docker Compose. The same `docker-compose up -d` command (with the `-d` for detached mode) would run the application in production.
+1.  **Local Development**: `docker-compose up --build` is the primary command. It spins up the entire stack locally. Since the application code is mounted as a volume, changes to Python files are reflected instantly upon restarting the relevant containers (e.g., `docker-compose restart bot worker`).
+2.  **Deployment**: The project is designed for any server with Docker and Docker Compose. The `docker-compose up -d` command runs the application in production.
 
 ## 8. Troubleshooting and Debugging
 
--   **View Logs**: The first step is always `docker-compose logs -f <service_name>`. For example, `docker-compose logs -f worker` will show you live logs from the Celery worker.
--   **"File Not Found"**: This almost always indicates a problem with shared volumes. Ensure the file is being saved by one container to a path that is mounted in the other container.
--   **`TimedOut` Errors**: This is a network latency issue. It was solved by increasing the `read_timeout` in the `python-telegram-bot` `ApplicationBuilder`.
--   **Library-Specific Bugs**: We encountered bugs with `chromadb` telemetry. The solution was to pin to a known-stable older version in `requirements.txt` and rebuild the image. This is a common strategy when dealing with fast-moving open-source libraries.
+-   **View Logs**: The first step is always `docker-compose logs -f <service_name>`. The `worker` log is the most important for debugging business logic failures.
+-   **Task Retries & Duplicate Messages**: If you see duplicate bot messages, it's a sign that a Celery task is failing and being retried. The solution was to explicitly set `max_retries=0` on the task decorator in `tasks.py` and wrap the task's logic in a `try...except` block to ensure it fails cleanly.
+-   **"No Documents Found" After Ingestion**: This was a critical bug caused by a stale ChromaDB client. The `bot` and `worker` processes were not seeing a consistent view of the database. The fix was to move all database interactions exclusively to the `worker` process and to re-initialize the ChromaDB client within each task (`get_project_retriever`) to ensure it always reads the latest state from the disk volume.
+-   **Telegram `httpx.ReadError`**: A common network timeout issue. Solved by increasing the `read_timeout` and `write_timeout` in the `python-telegram-bot` `ApplicationBuilder`.

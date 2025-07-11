@@ -1,137 +1,98 @@
-# Product Requirements Document: Telegram AI Notebook Bot
+# Product Requirements Document: Lumenote AI
 
-*   **Version:** 1.0
-*   **Date:** July 5, 2024
+*   **Version:** 2.0
+*   **Date:** July 10, 2025
 *   **Author:** Koluchiy
-*   **Status:** In Development
+*   **Status:** Final
 
 ## 1. Overview & Vision
 
 ### 1.1. Product Name
-Telegram AI Notebook Bot (Internal codename: *Tele-Notebook*)
+Lumenote
 
 ### 1.2. Vision
-To create a Telegram-based personal AI assistant that empowers users to deeply understand and creatively interact with their documents and topics of interest. The bot will act like a personal "NotebookLM," allowing users to upload sources, ask questions, and generate insightful content like podcasts and mind maps directly within their favorite messenger.
+To create an intelligent, autonomous research assistant on Telegram that empowers users to explore topics of interest. Lumenote transforms from a simple "notebook" into a proactive partner that discovers, ingests, and synthesizes information, allowing users to go from a topic idea to deep, source-grounded understanding and creative content generation with minimal effort.
 
 ### 1.3. Target Audience
-*   Students and researchers who need to digest and summarize study materials.
-*   Professionals who want to quickly extract key insights from reports, articles, and documents.
-*   Content creators looking for an efficient way to script podcasts or visualize ideas.
-*   Curious individuals who want to explore topics with an AI-powered research assistant.
+*   **Students & Researchers:** Individuals needing to quickly gather and digest information on a new topic for a paper, presentation, or exam.
+*   **Professionals & Analysts:** Users who need to get up to speed on a new industry, technology, or event by consuming and summarizing multiple sources.
+*   **Content Creators:** Podcasters and writers looking for an efficient way to research a topic, gather source material, and generate initial scripts or idea maps.
+*   **Lifelong Learners:** Curious individuals who want an AI-powered tool to explore new subjects in a structured and interactive way.
 
-## 2. Core Features (MVP - Minimum Viable Product)
+## 2. Core Features
 
-### 2.1. Project & Source Management
-*   **Requirement:** Users must be able to create and manage distinct "projects." Each project will be a separate container for documents and conversations.
-*   **User Story:** As a user, I want to create a new project called "Q2 Marketing Report" so I can keep all related documents and queries separate from my "History Midterm" project.
+### 2.1. Topic-Centric Project Management
+*   **Requirement:** Users must be able to create projects centered around a specific topic of study rather than just a generic name. This topic becomes the core context for all subsequent actions within that project.
+*   **User Story:** "As a student, I want to create a new project on 'the effects of neutron star mergers on element creation' so the bot knows the central theme of my research."
 *   **Implementation Details:**
-    *   The bot will provide commands like `/newproject <name>`, `/switchproject <name>`, and `/listprojects`.
-    *   The system will associate uploaded documents and conversation history with the user's currently active project.
-    *   The backend will use the user's Telegram ID and the project name to partition data in the vector store.
+    *   The primary command for project creation is `/newproject <topic of study>`.
+    *   The system will use the user's topic to generate a unique, system-friendly project ID for data storage (e.g., `user_123_neutron-star-merger`).
+    *   The original, human-readable topic (e.g., "Neutron star merger") will be stored and associated with the project.
+    *   Standard management commands like `/listprojects` and `/switchproject <name>` must remain functional.
 
-### 2.2. Document Upload
-*   **Requirement:** Users must be able to upload documents to their active project.
-*   **User Story:** As a user, I want to upload a PDF file of a research paper to my project so the bot can use it as a source for answering my questions.
+### 2.2. Autonomous Source Discovery
+*   **Requirement:** The bot must be able to autonomously search the web for relevant, high-quality sources based on the project's main topic.
+*   **User Story:** "After creating my project, I want to type `/discover` and have the bot automatically find the top 5 most relevant articles or papers on my topic and add them to my project's knowledge base."
 *   **Implementation Details:**
-    *   The bot will support uploading of `.pdf`, `.txt`, and `.md` files initially.
-    *   Upon upload, the backend will process the document (load, chunk, embed) and add it to the vector store associated with the user's active project.
-    *   The bot will confirm successful processing to the user.
+    *   A `/discover` command will trigger this feature.
+    *   The bot will immediately acknowledge the request and inform the user that the process is running in the background.
+    *   The backend will use a search API (e.g., Tavily) to find sources.
+    *   The bot will report the list of discovered sources back to the user.
+    *   Crucially, the bot will then automatically ingest the content of these sources into the project's vector database.
+    *   A final, single "Success" message will be sent upon completion of the entire ingestion process. The user can then immediately begin asking questions.
 
-### 2.3. Source-Grounded Q&A
-*   **Requirement:** Users must be able to ask questions and receive answers grounded in the documents they have uploaded to the current project.
-*   **User Story:** As a user, after uploading my documents, I want to ask "What were the key findings of the study?" and get a summary based only on the information in those documents.
+### 2.3. Multi-Modal Source Ingestion
+*   **Requirement:** Users must retain the ability to supplement the bot's discovered sources with their own local files or specific web links.
+*   **User Story:** "The bot found some great general articles with `/discover`, but I also have a specific research paper as a PDF that I want to add to the project. I will simply upload the PDF file to the chat."
+*   **User Story 2:** "I found a specific blog post I want to include. I will use the `/addsource <url>` command to add it directly."
 *   **Implementation Details:**
-    *   This will be the default interaction mode. Any message that is not a command will be treated as a query.
-    *   The backend will perform a RAG (Retrieval-Augmented Generation) lookup in the project's vector store to find relevant context.
-    *   The retrieved context and the user's question will be passed to the LLM (Gemini) to generate a source-grounded answer.
+    *   **File Upload:** The bot must support direct uploads of `.pdf`, `.txt`, and `.md` files.
+    *   **URL Ingestion:** A `/addsource <url>` command must be available for users to add specific web pages. The backend will fetch, parse, and ingest the text content of the URL.
+    *   All ingestion processes (discovery, file upload, URL add) will run as asynchronous background tasks to keep the bot responsive.
 
-### 2.4. Podcast Generation
-*   **Requirement:** Users must be able to generate a short audio podcast based on their documents or a specified topic.
-*   **User Story:** As a user, I want to issue a command like `/podcast on the main challenges` to receive an MP3 audio file summarizing that topic based on my project's sources.
+### 2.4. Context-Aware Content Generation
+*   **Requirement:** The content generation commands (`/podcast`, `/mindmap`) must be intelligent. They should use the project's main topic as the default context if no specific topic is provided by the user.
+*   **User Story:** "I've added all my sources. I want to just type `/podcast` and get an audio summary of my entire project's main topic without having to re-type it."
+*   **User Story 2:** "For a more specific output, I want to type `/podcast on the role of kilonovas` and have the bot generate a podcast on that sub-topic, using the project's sources for context."
 *   **Implementation Details:**
-    *   A `/podcast <topic>` command will trigger this feature.
-    *   The bot will immediately acknowledge the command (e.g., "On it! Generating your podcast about 'main challenges'...") to provide instant feedback. The actual processing will happen in the background.
-    *   The backend will use RAG to find sources relevant to the `<topic>`.
-    *   The LLM (Gemini) will be prompted to generate a conversational podcast script from these sources.
-    *   The generated script will be sent to the Piper TTS Docker service for audio synthesis.
-    *   The final audio file (`.wav` or converted to `.mp3`) will be sent back to the user upon completion.
+    *   `/podcast` (no arguments): The system will use the stored "main topic" of the active project to generate the script.
+    *   `/podcast <specific topic>`: The system will use the user-provided `<specific topic>` for generation.
+    *   The same logic applies to the `/mindmap` command.
 
-### 2.5. Mind Map Generation
-*   **Requirement:** Users must be able to generate a visual mind map for a topic based on their sources.
-*   **User Story:** As a user, I want to command `/mindmap on the proposed solutions` to get a PNG image that visually organizes the solutions discussed in my documents.
+### 2.5. Source-Grounded Q&A
+*   **Requirement:** All user questions (plain text messages) must be answered strictly based on the information contained within the project's knowledge base (both discovered and user-uploaded sources).
+*   **User Story:** "After the bot has processed all the sources on neutron star mergers, I want to ask 'What elements are created during a merger?' and get a factual answer based only on what's in the documents."
 *   **Implementation Details:**
-    *   A `/mindmap <topic>` command will trigger this feature.
-    *   The bot will immediately acknowledge the command and notify the user that the mind map is being created.
-    *   The backend will use RAG to find relevant sources.
-    *   The LLM (Gemini) will be prompted to generate a structured representation of the topic in `Graphviz (DOT)` or `Mermaid.js` format.
-    *   A server-side rendering tool (`graphviz` library) will convert this text representation into a PNG image.
-    *   The bot will send the image back to the user upon completion.
+    *   The backend will use a RAG (Retrieval-Augmented Generation) pipeline.
+    *   When a question is received, the system will perform a vector search against the active project's database to find the most relevant text chunks.
+    *   These chunks (context) and the user's question will be passed to an LLM (Google Gemini) to generate the answer.
 
-### 2.6. Multi-Language Support
-*   **Requirement:** The bot must support language selection for its responses and generated content (podcasts).
-*   **User Story:** As a user, I want to set my language to German (`/lang de`) so that all Q&A responses, podcast scripts, and mind map text are generated in German.
+### 2.6. Multi-Language & User State Management
+*   **Requirement:** The bot must be fully internationalized and remember user preferences across sessions.
 *   **Implementation Details:**
-    *   A `/lang <language_code>` command (`en`, `ru`, `de`) will set the user's preference.
-    *   This language setting will be stored per user.
-    *   All prompts sent to the LLM (Gemini) will include an instruction to "Respond in [selected language]."
-    *   For podcasts, the system will select a corresponding Piper voice model for the chosen language. This requires pre-loading voice models for each supported language in the Piper service.
+    *   **Language:** A `/lang <en|de|ru>` command allows users to set their preferred language. All bot interface messages (help, status, confirmations) and all generated content (Q&A, podcast scripts, mind map text) must be in the selected language.
+    *   **Statefulness:** The system must remember each user's `active_project` and `language` preference. This state must be safely shared between the main bot process and the background worker processes.
 
 ## 3. Non-Functional Requirements
 
-### 3.1. Statefulness
-The bot must remember the user's active project and language preference between interactions.
+### 3.1. Asynchronous & Non-Blocking Architecture
+*   **Requirement:** The bot must remain responsive at all times. A long-running task for one user (like `/discover`) must not block or slow down the bot for any other user.
+*   **Implementation:** The system is architected with a decoupled `bot` (receptionist) and `worker` (workhorse) model, orchestrated by a job queue (Celery & Redis). The `bot`'s only job is to validate input and enqueue tasks. All heavy processing (API calls, file I/O, database interactions) is handled exclusively by the `worker`.
 
-### 3.2. Error Handling
-The bot must handle errors gracefully (e.g., failed API calls, invalid file types) and provide helpful feedback to the user.
+### 3.2. Reliability & Error Handling
+*   **Requirement:** Background tasks must be reliable. If a task fails, it should not be automatically retried in a way that creates a confusing user experience (e.g., duplicate messages).
+*   **Implementation:** Critical, user-initiated tasks like `/discover` will be configured with `max_retries=0` to ensure they run exactly once, succeeding or failing cleanly. The bot must report clear success or error messages to the user.
 
-### 3.3. Modularity & Maintainability
-The architecture must be modular to allow for adding new features without requiring a full rewrite. Code should be clean, well-commented, and follow best practices.
+### 3.3. Data Persistence & Integrity
+*   **Requirement:** All user data, including project sources (vector embeddings) and user state, must persist across application restarts.
+*   **Implementation:** The application will use named Docker volumes to persist the ChromaDB database files and user state files.
 
-## 4. Performance & Concurrency
+## 4. Technical Stack (Summary)
 
-### 4.1. Asynchronous Operation
-*   **Requirement:** The bot must remain responsive to all users even while performing long-running tasks for one user (e.g., processing a large document, generating a podcast). A single user's request must not block the entire application.
-*   **User Story:** As User A, I can chat with the bot and get instant answers to simple questions while User B is waiting for a 2-minute podcast to be generated.
-*   **Implementation Details:**
-    *   The core bot application will be built on an **asynchronous framework** (`asyncio` in Python).
-    *   The `python-telegram-bot` library will be used in its `asyncio`-native mode.
-    *   All I/O-bound operations (API calls to Gemini, requests to the Piper service, file operations) must be handled asynchronously using `await`.
-
-### 4.2. Job Queuing for Intensive Tasks
-*   **Requirement:** Computationally intensive tasks must be offloaded to a background process to prevent them from bogging down the main bot application.
-*   **User Story:** As a user, when I upload a 100-page PDF, the bot acknowledges it instantly and processes it in the background, notifying me upon completion, without any noticeable slowdown in its chat responses.
-*   **Implementation Details:**
-    *   A **job queue system** (like **Celery** with **Redis** or **RabbitMQ** as a broker) will be implemented.
-    *   Tasks like document ingestion/embedding, podcast script generation, and mind map creation will be defined as "background jobs."
-    *   When a user triggers such a task, the main bot app will simply add a job to the queue and return an immediate acknowledgement to the user.
-    *   One or more **worker processes** will run separately, picking up jobs from the queue and executing them.
-    *   Upon job completion, the worker can use the Telegram Bot API to send the final result (podcast file, mind map image) back to the user who requested it.
-
-## 5. Technical Stack & Architecture
-
-*   **Platform:** Telegram
-*   **Bot Framework:** `python-telegram-bot` (version 20+ for native `asyncio` support)
-*   **Core Logic:** Python 3.11+ with `asyncio`
-*   **Job Queue System:** **Celery**
-*   **Message Broker:** **Redis** (or RabbitMQ) - for Celery to manage the job queue.
-*   **LLM:** Google Gemini Pro API (via an asynchronous HTTP client like `aiohttp` or the official async-capable Google library).
-*   **Text-to-Speech (TTS):** Piper TTS, deployed in a self-hosted Docker container.
-*   **RAG Framework:** LangChain or LlamaIndex (using their asynchronous methods).
-*   **Vector Database:** ChromaDB (or a more scalable option like Weaviate/Pinecone if user load increases).
-*   **Mind Map Rendering:** Graphviz (via Python `graphviz` library).
-*   **Architecture:**
-    *   **Decoupled Three-Part System:**
-        1.  **Main Bot App (Web Server):** A lightweight, asynchronous Python application. Its only jobs are to handle incoming Telegram updates, add tasks to the job queue, and provide quick, simple responses.
-        2.  **Job Queue (Redis):** A message broker that acts as a buffer between the main app and the workers.
-        3.  **Celery Workers:** One or more separate processes that consume tasks from the queue. These workers do all the heavy lifting: calling the Gemini API, processing documents, rendering mind maps, and interacting with the Piper service. This isolates long-running tasks from the user-facing bot.
-    *   The Piper TTS service will remain a separate Docker container, called by the Celery workers.
-    *   All secret keys will be managed via a `.env` file and not be committed to version control.
-
-## 6. Future Enhancements (Post-MVP)
-
-*   Support for more source types (e.g., web URLs, YouTube transcripts).
-*   Interactive mind maps (e.g., using a web view).
-*   User-selectable voices for podcasts.
-*   Conversation history summary within a project.
-*   Usage analytics for the bot owner.
-*   Payment integration for premium features or higher usage limits.
+*   **Orchestration:** Docker & Docker Compose
+*   **Bot Framework:** `python-telegram-bot`
+*   **Job Queue:** Celery & Redis
+*   **AI/LLM:** Google Gemini (for Q&A, scripting) & Gemini TTS (for audio)
+*   **Web Search:** Tavily Search API
+*   **Vector Database:** ChromaDB
+*   **Core Logic:** Python 3.11 with `asyncio`

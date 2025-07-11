@@ -1,10 +1,12 @@
+# tele_notebook/utils/prompts.py
+
 from langchain_core.prompts import ChatPromptTemplate
 
-# Supported languages and their corresponding Piper voice models
+# Supported languages. The 'voice' key is no longer needed.
 SUPPORTED_LANGUAGES = {
-    "en": {"name": "English", "voice": "en_US-lessac-medium"},
-    "ru": {"name": "Russian", "voice": "ru_RU-irina-medium"},
-    "de": {"name": "German", "voice": "de_DE-thorsten-medium"},
+    "en": {"name": "English"},
+    "ru": {"name": "Russian"},
+    "de": {"name": "German"},
 }
 
 def get_qa_prompt(language: str) -> ChatPromptTemplate:
@@ -14,13 +16,14 @@ def get_qa_prompt(language: str) -> ChatPromptTemplate:
         ("user", "Question: {input}\n\nContext:\n{context}"),
     ])
 
+# --- THIS IS THE MODIFIED FUNCTION ---
 def get_podcast_prompt(language: str) -> ChatPromptTemplate:
     lang_name = SUPPORTED_LANGUAGES.get(language, {"name": "English"})["name"]
     return ChatPromptTemplate.from_template(
         f"""You are a podcast script writer. Based on the provided context, write a short, engaging, and conversational podcast script about the topic: '{{topic}}'.
-The script should be natural-sounding. Start with a brief introduction and end with a concluding thought.
-The entire script should be around 150-200 words.
-Your entire output must be only the script content, without any titles, headers, or "Host 1:" markers.
+The script should have two distinct speakers, labeled "Speaker 1:" and "Speaker 2:".
+The entire script should be around 150-200 words and feel natural.
+Your entire output must be only the script content.
 The script MUST be in {lang_name}.
 
 Context:
@@ -30,8 +33,6 @@ Topic: {{topic}}
 
 Podcast Script:"""
     )
-
-# utils/prompts.py (The new, corrected version)
 
 def get_mindmap_prompt(language: str) -> ChatPromptTemplate:
     lang_name = SUPPORTED_LANGUAGES.get(language, {"name": "English"})["name"]
@@ -44,13 +45,13 @@ Your entire output must be ONLY the DOT language code, enclosed in a single ```d
 
 Example format:
 ```dot
-digraph G {{{{  # CORRECT: Use 4 open braces to escape for both f-string and LangChain
+digraph G {{{{
     rankdir=LR;
     node [shape=box, style="rounded,filled", fillcolor=lightblue];
     "Central Topic" -> "Idea 1";
     "Central Topic" -> "Idea 2";
     "Idea 1" -> "Detail A";
-}}}}```  # CORRECT: Use 4 close braces
+}}}}```
 Context:
 {{context}}
 

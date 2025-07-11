@@ -3,6 +3,7 @@
 import chromadb
 from chromadb.config import Settings as ChromaSettings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_core.documents import Document
 from langchain_community.document_loaders import PyPDFLoader, TextLoader
 from langchain_community.vectorstores import Chroma
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
@@ -24,7 +25,7 @@ def get_collection_name(user_id: int, project_name: str) -> str:
     This involves transliterating to ASCII, lowercasing, and cleaning special characters.
     """
     # 1. Transliterate non-ASCII characters (e.g., "РусИстория" -> "RusIstoriya")
-    slug = unidecode(project_name)
+    slug = unidecode(project_name).lower()
     # 2. Convert to lowercase
     slug = slug.lower()
     # 3. Replace spaces or consecutive hyphens/underscores with a single hyphen
@@ -62,6 +63,28 @@ async def async_add_document_to_project(user_id: int, project_name: str, file_pa
     )
     print(f"Added {len(splits)} chunks to collection '{collection_name}'")
 
+async def async_add_text_to_project(user_id: int, project_name: str, text_content: str, metadata: dict = None):
+    """Processes and adds plain text content to the user's project vector store asynchronously."""
+    if metadata is None:
+        metadata = {}
+        
+    collection_name = get_collection_name(user_id, project_name)
+    
+    # Create a single LangChain Document object from the text
+    doc = Document(page_content=text_content, metadata=metadata)
+    
+    # Split the document into chunks
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+    splits = text_splitter.split_documents([doc])
+
+    # Add the chunks to ChromaDB
+    await Chroma.afrom_documents(
+        client=client,
+        documents=splits,
+        embedding=embeddings,
+        collection_name=collection_name
+    )
+    print(f"Added {len(splits)} chunks from text to collection '{collection_name}'")
 
 def get_project_retriever(user_id: int, project_name: str):
     """Gets a retriever for a specific project. This is still synchronous and fine."""
